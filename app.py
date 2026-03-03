@@ -1,8 +1,11 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import mysql.connector
 
 app = Flask(__name__)
+CORS(app)
 
+# Database connection pointing to your schema 'icoms'
 def get_db():
     return mysql.connector.connect(
         host="localhost",
@@ -11,42 +14,56 @@ def get_db():
         database="icoms"
     )
 
-# --- API ROUTES ---
+# --- USERS API ROUTES ---
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT id, name, role FROM users")
-    users = cursor.fetchall()
-    cursor.close()
-    db.close()
-    return jsonify(users)
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        # We fetch username (the person's name) and their category (role)
+        cursor.execute("SELECT id, username, role FROM users")
+        users = cursor.fetchall()
+        cursor.close()
+        db.close()
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({"message": str(e)}), 500
 
 @app.route('/api/users', methods=['POST'])
 def add_user():
-    data = request.json
-    db = get_db()
-    cursor = db.cursor()
-    query = "INSERT INTO users (name, role) VALUES (%s, %s)"
-    cursor.execute(query, (data['name'], data['role']))
-    db.commit()
-    new_id = cursor.lastrowid
-    cursor.close()
-    db.close()
-    return jsonify({"id": new_id, "message": "User added successfully"})
+    try:
+        data = request.get_json()
+        db = get_db()
+        cursor = db.cursor()
+        # 'username' is the person's name (e.g., Sourab)
+        # 'role' is the category (e.g., Dispatcher)
+        query = "INSERT INTO users (username, password, role) VALUES (%s, %s, %s)"
+        cursor.execute(query, (data['name'], 'User@123', data['role']))
+        db.commit()
+        new_id = cursor.lastrowid
+        cursor.close()
+        db.close()
+        return jsonify({"id": new_id, "message": "User added successfully"}), 201
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({"message": str(e)}), 500
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
-    db.commit()
-    cursor.close()
-    db.close()
-    return jsonify({"message": "User deleted"})
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        db.commit()
+        cursor.close()
+        db.close()
+        return jsonify({"message": "User deleted"})
+    except Exception as e:
+        return jsonify({"message": str(e)}), 500
 
-# ... keep your existing @app.route definitions below ...
+# --- PAGE NAVIGATION ---
+
 @app.route('/')
 def home():
     return render_template('login.html')
@@ -73,7 +90,6 @@ def notifications():
 
 @app.route('/client-tracking.html')
 def client():
-    # Note: Your login script redirects to 'client-tracking.html'
     return render_template('client.html')
 
 @app.route('/users.html')
