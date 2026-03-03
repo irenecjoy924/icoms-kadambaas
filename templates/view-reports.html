@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #FFF9F6; }
+        .orange-header { background: linear-gradient(90deg, #E31E24 0%, #FF5F1F 100%); }
+        .filter-btn { border: 1px solid #e2e8f0; transition: all 0.2s; }
+        .filter-btn.active { background-color: #FF5F1F; color: white; border-color: #FF5F1F; }
+    </style>
+</head>
+<body class="min-h-screen pb-20">
+    <header class="orange-header px-8 py-4 flex justify-between items-center text-white shadow-lg">
+        <div class="flex items-center gap-3">
+            <h1 class="font-bold text-xl tracking-tighter">KADAMBAAS REPORTS</h1>
+        </div>
+        <a href="/admin" class="bg-white/20 px-4 py-2 rounded-lg hover:bg-white/30 transition">Back to Dashboard</a>
+    </header>
+
+    <main class="max-w-6xl mx-auto p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-orange-100">
+                <p class="text-gray-500 text-sm font-semibold text-uppercase">Total Revenue (Filtered)</p>
+                <h3 id="total-earnings" class="text-3xl font-bold text-orange-600">₹0</h3>
+            </div>
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                <p class="text-gray-500 text-sm font-semibold text-uppercase">Orders in Period</p>
+                <h3 id="order-count" class="text-3xl font-bold text-slate-800">0</h3>
+            </div>
+        </div>
+
+        <div class="flex gap-3">
+            <button onclick="applyFilter('all')" id="btn-all" class="filter-btn active px-6 py-2 rounded-xl text-sm font-bold">All Time</button>
+            <button onclick="applyFilter('weekly')" id="btn-weekly" class="filter-btn bg-white px-6 py-2 rounded-xl text-sm font-bold text-gray-600">Weekly</button>
+            <button onclick="applyFilter('annual')" id="btn-annual" class="filter-btn bg-white px-6 py-2 rounded-xl text-sm font-bold text-gray-600">Annual</button>
+        </div>
+
+        <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="report-title" class="text-2xl font-bold text-gray-800">Order History Report</h2>
+                <button onclick="window.print()" class="bg-slate-800 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-slate-700">Print PDF</button>
+            </div>
+
+            <div class="overflow-hidden rounded-2xl border border-gray-100">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 text-gray-500 text-sm uppercase">
+                        <tr>
+                            <th class="p-4 font-semibold">Order ID</th>
+                            <th class="p-4 font-semibold">Customer</th>
+                            <th class="p-4 font-semibold">Price</th>
+                            <th class="p-4 font-semibold">Date</th>
+                            <th class="p-4 font-semibold text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report-table-body" class="text-gray-700">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let allOrdersData = [];
+
+        async function loadData() {
+            const tableBody = document.getElementById('report-table-body');
+            try {
+                // Ensure your app.py has a route for /api/reports/orders
+                const response = await fetch("/api/reports/orders");
+                allOrdersData = await response.json();
+                applyFilter('all');
+            } catch (error) {
+                console.error("Error:", error);
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-500 font-medium">Failed to connect to database. Make sure app.py is running.</td></tr>`;
+            }
+        }
+
+        function applyFilter(range) {
+            // Update UI buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn-${range}`).classList.add('active');
+
+            const now = new Date();
+            let filtered = allOrdersData;
+
+            if (range === 'weekly') {
+                const weekAgo = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+                filtered = allOrdersData.filter(o => new Date(o.created_at) >= weekAgo);
+                document.getElementById('report-title').innerText = "Weekly Order Report";
+            } else if (range === 'annual') {
+                const yearAgo = new Date(now.getTime() - (365 * 24 * 60 * 60 * 1000));
+                filtered = allOrdersData.filter(o => new Date(o.created_at) >= yearAgo);
+                document.getElementById('report-title').innerText = "Annual Order Report";
+            } else {
+                document.getElementById('report-title').innerText = "All Time Order Report";
+            }
+
+            renderTable(filtered);
+        }
+
+        function renderTable(data) {
+            const tableBody = document.getElementById('report-table-body');
+            const earningsDisplay = document.getElementById('total-earnings');
+            const countDisplay = document.getElementById('order-count');
+            
+            if (!data || data.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-10 text-center text-gray-400 italic">No orders found for this period.</td></tr>`;
+                earningsDisplay.innerText = "₹0";
+                countDisplay.innerText = "0";
+                return;
+            }
+
+            let totalRevenue = 0;
+            tableBody.innerHTML = data.map(order => {
+                const price = parseFloat(order.total_price || 0);
+                totalRevenue += price;
+                
+                return `
+                <tr class="border-t border-gray-50 hover:bg-orange-50/20 transition">
+                    <td class="p-4 font-bold text-gray-800">${order.order_id_code}</td>
+                    <td class="p-4">${order.customer_name}</td>
+                    <td class="p-4 text-orange-600 font-bold">₹${price.toLocaleString()}</td>
+                    <td class="p-4 text-sm text-gray-500">${new Date(order.created_at).toLocaleDateString()}</td>
+                    <td class="p-4 text-center">
+                        <span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
+                            order.status === 'Delivered' ? 'bg-green-100 text-green-700' : 
+                            order.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+                        }">${order.status}</span>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            earningsDisplay.innerText = `₹${totalRevenue.toLocaleString()}`;
+            countDisplay.innerText = data.length;
+        }
+
+        document.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+</html>
